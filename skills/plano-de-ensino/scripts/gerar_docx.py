@@ -11,9 +11,9 @@ Formato de documento.json — lista de blocos:
   {"tipo": "titulo1", "texto": "Plano de Ensino - Data Analytics"},
   {"tipo": "titulo2", "texto": "1. Ementa"},
   {"tipo": "paragrafo", "texto": "..."},
-  {"tipo": "tabela", "cabecalho": ["Data", "RA", "Descrição", "Carga horária"],
-   "linhas": [["04/08", "RA1", "Introdução", "4h"]],
-   "larguras": [15, 10, 55, 20]}
+  {"tipo": "tabela", "cabecalho": ["#", "Data", "RA", "Descrição", "Carga horária"],
+   "linhas": [["1", "04/08", "RA1", "Introdução", "04:00"]],
+   "larguras": [5, 12, 8, 55, 20]}
 ]
 
 O mesmo documento.json também é aceito por gerar_pdf.py — os dois formatos

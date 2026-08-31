@@ -24,12 +24,16 @@ Perguntas objetivas, sem deixar implícito:
 2. **Dias de aula e carga horária de cada um**: quais dias da semana tem aula e quantas horas em cada — se for igual todo dia, uma resposta só; se variar (ex: terça 2h, quinta 2h), pedir por dia.
 3. **RAs e distribuição de tempo**: os RAs já vieram do Bloco 2 — agora pergunta o % (ou peso) de carga horária de cada um dentro do cronograma (ex: "RA1 30%, RA2 30%, RA3 40%"). Confirma que soma 100%.
 4. **Temas por RA**: lista de temas/conteúdos de cada RA, na ordem que devem ser ensinados — vira a coluna "Descrição das atividades pedagógicas". Se a lista de temas for mais curta que o número de aulas calculado pro RA, a skill sinaliza a lacuna em vez de inventar conteúdo.
-5. **TDE**: quantos TDEs por RA, carga horária de cada um. A data exata de cada TDE fica em aberto ("[professor define a data]") — quem decide o dia é o professor, não a skill.
+5. **TDE**: quantos TDEs por RA, carga horária de cada um. A data exata de cada TDE fica em aberto ("[professor define a data]", sem número de sessão) — quem decide o dia é o professor, não a skill.
 6. **Recessos/pontos facultativos institucionais** (não são feriado nacional — feriados nacionais entram sozinhos via BrasilAPI, não precisa perguntar): pede se há alguma data assim conhecida no período (ex: recesso acadêmico da Semana Santa).
+7. **Datas institucionais sem RA** (opcional): se o professor quiser marcar no cronograma datas fixas de atividades institucionais que não pertencem a nenhum RA (Acolhida Cultural, Semana Acadêmica, Feedback de notas finais) — entram na tabela com `RA: -`, inseridas manualmente na posição certa depois que `gerar_cronograma.py` monta a base (o calculador não sabe essas datas de antemão).
 
-## Bloco 5 — Bibliografia e orientações gerais
+A tabela final tem 5 colunas: **# | Data | RA | Descrição das atividades pedagógicas | Carga horária** — `#` fica em branco nas linhas sem data fixa (TDE, recuperação estendida), `RA` vira `-` nas linhas institucionais, `Carga horária` sai em formato `HH:MM`. Ver `template-pucpr.md` seção 5.
+
+## Bloco 5 — Regras da disciplina, bibliografia e orientações gerais
+- **Regras da Disciplina (seção 6, padrão do template — não pular)**: confirmar o número da Instrução Normativa de recuperação vigente e o contato da secretaria da escola/câmpus pra 2ª chamada (varia por escola — não assumir os valores de outra disciplina). O resto do texto (Diagnóstica/Formativa/Somativa/Recuperação/honestidade intelectual) é praticamente padrão — usar como boilerplate e só ajustar a fórmula da nota final.
 - Bibliografia básica e complementar (título, autor — justificativa é opcional).
-- Se quer o texto padrão institucional de Orientações Gerais (uso de IA generativa, Resolução 274/2024 CONSUN) ou uma variação própria.
+- Orientações Gerais (seção 8): usar o texto oficial literal de `template-pucpr.md` (declaração padrão de uso de IA + link) — só perguntar se o professor quer uma variação própria, não reescrever por padrão.
 
 ## Brief final
 Antes de gerar o documento, resume: identificação, nº de RAs e % de cada, range de datas e dias de aula, nº de encontros calculado, se há lacunas sinalizadas (temas insuficientes, feriados não confirmados). Só gera depois de confirmado.

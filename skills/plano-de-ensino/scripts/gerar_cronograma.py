@@ -9,6 +9,13 @@ BrasilAPI (com fallback se não houver internet).
 Uso:
     python3 gerar_cronograma.py dados.json > cronograma.json
 
+Cada linha de saída traz: indice (nº sequencial da sessão, None pra TDE sem
+data fixa — mesmo padrão de linha administrativa sem número dos planos
+reais), data (DD/MM), data_iso (uso interno), ra, descricao, carga_horaria
+(número, uso interno) e carga_horaria_fmt ("HH:MM", formato dos planos
+reais). O documento final usa indice/data/ra/descricao/carga_horaria_fmt —
+"#" é a primeira coluna da tabela de cronograma no template oficial.
+
 Formato de dados.json:
 {
   "data_inicio": "2026-08-05",
@@ -30,6 +37,13 @@ import urllib.request
 from datetime import date, timedelta
 
 DIAS_SEMANA_PT = ["segunda", "terca", "quarta", "quinta", "sexta", "sabado", "domingo"]
+
+
+def formata_carga_horaria(horas):
+    """4 -> '04:00' — formato usado nos planos de ensino reais (HH:MM)."""
+    h = int(horas)
+    m = round((horas - h) * 60)
+    return f"{h:02d}:{m:02d}"
 
 
 def normaliza_dia(nome):
@@ -100,6 +114,7 @@ def gera_cronograma(data_inicio, data_fim, dias_semana, feriados_nacionais, rece
         ra["_horas_aula_acumuladas"] = 0.0
 
     linhas = []
+    indice = 1
     ra_idx = 0
     for encontro in encontros:
         while (
@@ -114,12 +129,15 @@ def gera_cronograma(data_inicio, data_fim, dias_semana, feriados_nacionais, rece
             descricao = "[definir conteúdo]"
             avisos.append(f"{ra['nome']}: acabaram os temas antes das aulas (encontro de {encontro['data'].isoformat()} sem tema)")
         linhas.append({
+            "indice": indice,  # numeração sequencial da linha, como nos planos reais (coluna "#")
             "data": encontro["data"].strftime("%d/%m"),  # formato brasileiro, sem ano (bate com os planos reais mapeados)
             "data_iso": encontro["data"].isoformat(),
             "ra": ra["nome"],
             "descricao": descricao,
             "carga_horaria": encontro["horas"],
+            "carga_horaria_fmt": formata_carga_horaria(encontro["horas"]),
         })
+        indice += 1
         ra["_horas_aula_acumuladas"] += encontro["horas"]
 
         # RA trocou de bloco (ou é o último encontro do RA atual) -> insere TDEs pendentes
@@ -129,11 +147,13 @@ def gera_cronograma(data_inicio, data_fim, dias_semana, feriados_nacionais, rece
             for tde in ra.get("tde", []):
                 for _ in range(tde["quantidade"]):
                     linhas.append({
+                        "indice": None,  # sem data fixa -> sem número de sessão, como as linhas administrativas dos planos reais
                         "data": "[professor define a data]",
                         "data_iso": None,
                         "ra": ra["nome"],
                         "descricao": "TDE",
                         "carga_horaria": tde["horas"],
+                        "carga_horaria_fmt": formata_carga_horaria(tde["horas"]),
                     })
             ra["_tde_inserido"] = True
 
@@ -211,6 +231,11 @@ def demo():
 
     tde_linhas = [l for l in linhas if l["descricao"] == "TDE"]
     assert len(tde_linhas) == 1 and tde_linhas[0]["ra"] == "RA1" and tde_linhas[0]["data"] == "[professor define a data]"
+    assert tde_linhas[0]["indice"] is None, "TDE sem data fixa deveria ficar sem número de sessão"
+    assert tde_linhas[0]["carga_horaria_fmt"] == "04:00", f"formato HH:MM incorreto: {tde_linhas[0]['carga_horaria_fmt']!r}"
+
+    indices = [l["indice"] for l in linhas if l["indice"] is not None]
+    assert indices == list(range(1, len(indices) + 1)), f"índices não são sequenciais 1..N: {indices}"
 
     print(f"demo ok — {len(linhas)} linhas geradas, {len(avisos)} avisos: {avisos}")
 

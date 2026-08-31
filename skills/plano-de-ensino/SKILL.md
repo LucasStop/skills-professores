@@ -8,7 +8,9 @@ metadata:
 
 # Plano de ensino
 
-Gera o documento completo a partir de uma entrevista curta + um cálculo de cronograma, e exporta `.docx`+`.pdf` sem depender de nada instalado além do Python 3. Leia `references/template-pucpr.md` (estrutura das 7 seções) e `references/entrevista.md` (roteiro completo de perguntas por bloco) antes de rodar o fluxo abaixo.
+Gera o documento completo a partir de uma entrevista curta + um cálculo de cronograma, e exporta `.docx`+`.pdf` sem depender de nada instalado além do Python 3. Leia `references/template-pucpr.md` (estrutura das 8 seções, confirmada num plano real — Data Analytics/Marina de Lara, 2026/2 — inclui o texto literal da seção 8) e `references/entrevista.md` (roteiro completo de perguntas por bloco) antes de rodar o fluxo abaixo.
+
+Se o professor já tiver (ou conseguir) o `.docx` editável oficial do template (com a arte institucional: faixa, selo, cores), **não gere do zero** — preencha os campos direto nesse arquivo (ver nota no fim de `references/template-pucpr.md`). Os scripts abaixo são o caminho pra quando esse arquivo ainda não existe.
 
 ## 0. Checagem de pré-requisito
 
@@ -20,7 +22,7 @@ Se o comando falhar (não encontrado), **pare e pergunte ao professor se quer in
 
 ## 1. Entrevista
 
-Siga `references/entrevista.md` — 5 blocos curtos (Identificação, Conteúdo pedagógico, Avaliação, Cronograma, Bibliografia/Orientações), 2-3 perguntas por rodada, assert-then-confirm quando o contexto já sugerir a resposta. O Bloco 4 (Cronograma) é o que alimenta o cálculo — não pule nenhuma das 6 perguntas dele.
+Siga `references/entrevista.md` — 5 blocos curtos (Identificação, Conteúdo pedagógico, Avaliação, Cronograma, Regras/Bibliografia/Orientações), 2-3 perguntas por rodada, assert-then-confirm quando o contexto já sugerir a resposta. O Bloco 4 (Cronograma) é o que alimenta o cálculo — não pule nenhuma das 7 perguntas dele. No Bloco 5, a seção 6 (Regras da Disciplina) **não é opcional** — é seção padrão do template atual, só o número da Instrução Normativa e o contato da secretaria variam por escola.
 
 Monte um brief resumido (identificação, RAs e %, range de datas, nº de encontros) e **confirme com o professor antes de gerar qualquer arquivo**.
 
@@ -34,7 +36,9 @@ Leia os `avisos` do resultado (feriados não encontrados, temas insuficientes, T
 
 ## 3. Montar o documento
 
-Monte `documento.json` (lista de blocos `titulo1`/`titulo2`/`paragrafo`/`tabela`, formato no topo de `scripts/gerar_docx.py`) seguindo a ordem de `assets/plano-template.md`, usando o `cronograma.json` gerado no passo anterior pra preencher a tabela da seção 5 (colunas Data/RA/Descrição/Carga horária, `larguras: [15, 10, 55, 20]`).
+Monte `documento.json` (lista de blocos `titulo1`/`titulo2`/`paragrafo`/`tabela`, formato no topo de `scripts/gerar_docx.py`) seguindo a ordem de `assets/plano-template.md`, usando o `cronograma.json` gerado no passo anterior pra preencher a tabela da seção 5 — colunas **# | Data | RA | Descrição das atividades pedagógicas | Carga horária** (`larguras: [5, 12, 8, 55, 20]`), usando os campos `indice`/`data`/`ra`/`descricao`/`carga_horaria_fmt` de cada linha do `cronograma.json` (não `carga_horaria` nem `data_iso`, que são só pro cálculo). Linha com `indice: null` entra com a célula `#` vazia. Se o professor pediu datas institucionais sem RA (Acolhida Cultural, Semana Acadêmica), insira essas linhas manualmente na posição cronológica certa, com `RA: "-"`.
+
+Seção 8 (Orientações Gerais): use o texto literal de `references/template-pucpr.md`, não parafraseie.
 
 ## 4. Exportar
 
