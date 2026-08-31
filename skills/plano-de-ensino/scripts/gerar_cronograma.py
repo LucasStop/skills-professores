@@ -1,0 +1,218 @@
+#!/usr/bin/env python3
+"""Calcula o cronograma de um plano de ensino: distribui os encontros de aula
+entre os RAs conforme o peso de cada um, busca feriados nacionais na BrasilAPI
+e reserva a carga horária de TDE dentro do RA correspondente.
+
+Só biblioteca padrão do Python — sem pip install, sem chamada de rede além da
+BrasilAPI (com fallback se não houver internet).
+
+Uso:
+    python3 gerar_cronograma.py dados.json > cronograma.json
+
+Formato de dados.json:
+{
+  "data_inicio": "2026-08-05",
+  "data_fim": "2026-12-05",
+  "dias_semana": {"terca": 4},                # ou {"terca": 2, "quinta": 2}
+  "recessos_manuais": ["2026-11-02"],          # pontos facultativos institucionais
+  "ras": [
+    {"nome": "RA1", "percentual": 30, "temas": ["Tema A", "Tema B"],
+     "tde": [{"horas": 4, "quantidade": 1}]},
+    {"nome": "RA2", "percentual": 70, "temas": ["Tema C"], "tde": []}
+  ]
+}
+"""
+import json
+import sys
+import unicodedata
+import urllib.error
+import urllib.request
+from datetime import date, timedelta
+
+DIAS_SEMANA_PT = ["segunda", "terca", "quarta", "quinta", "sexta", "sabado", "domingo"]
+
+
+def normaliza_dia(nome):
+    """'Terça', 'terça-feira', 'TERCA' -> 'terca'."""
+    sem_acento = "".join(
+        c for c in unicodedata.normalize("NFKD", nome) if not unicodedata.combining(c)
+    )
+    sem_acento = sem_acento.lower().strip()
+    for dia in DIAS_SEMANA_PT:
+        if sem_acento.startswith(dia):
+            return dia
+    raise ValueError(f"dia da semana não reconhecido: {nome!r}")
+
+
+def parse_data(s):
+    return date.fromisoformat(s)
+
+
+def busca_feriados_nacionais(anos):
+    """GET BrasilAPI (stdlib urllib, sem chave). Retorna set de 'YYYY-MM-DD' ou
+    None se não conseguir buscar (sem internet, API fora do ar, etc) — quem
+    chama decide o fallback (pedir a lista manual ao professor)."""
+    feriados = set()
+    for ano in sorted(anos):
+        url = f"https://brasilapi.com.br/api/feriados/v1/{ano}"
+        try:
+            with urllib.request.urlopen(url, timeout=5) as resp:
+                dados = json.loads(resp.read().decode("utf-8"))
+            feriados.update(item["date"] for item in dados)
+        except (urllib.error.URLError, TimeoutError, ValueError, KeyError, OSError):
+            return None
+    return feriados
+
+
+def gera_encontros(data_inicio, data_fim, dias_semana, feriados):
+    """dias_semana: dict {dia_normalizado: horas}. feriados: set de 'YYYY-MM-DD'."""
+    encontros = []
+    d = data_inicio
+    while d <= data_fim:
+        dia_idx = d.weekday()  # segunda=0 ... domingo=6
+        dia_nome = DIAS_SEMANA_PT[dia_idx]
+        if dia_nome in dias_semana and d.isoformat() not in feriados:
+            encontros.append({"data": d, "horas": dias_semana[dia_nome]})
+        d += timedelta(days=1)
+    return encontros
+
+
+def gera_cronograma(data_inicio, data_fim, dias_semana, feriados_nacionais, recessos_manuais, ras):
+    """Retorna (linhas, avisos). linhas = [{data, ra, descricao, carga_horaria}]."""
+    avisos = []
+    feriados = set(feriados_nacionais) | set(recessos_manuais)
+    encontros = gera_encontros(data_inicio, data_fim, dias_semana, feriados)
+    if not encontros:
+        raise ValueError("nenhum encontro gerado — confira o range de datas e os dias da semana")
+
+    carga_total = sum(e["horas"] for e in encontros)
+    soma_pct = sum(ra["percentual"] for ra in ras)
+    if abs(soma_pct - 100) > 0.01:
+        avisos.append(f"percentuais dos RAs somam {soma_pct}%, não 100%")
+
+    for ra in ras:
+        ra["_meta_total"] = carga_total * ra["percentual"] / 100
+        ra["_tde_horas"] = sum(t["horas"] * t["quantidade"] for t in ra.get("tde", []))
+        ra["_meta_aula"] = max(0.0, ra["_meta_total"] - ra["_tde_horas"])
+        if ra["_tde_horas"] > ra["_meta_total"]:
+            avisos.append(f"{ra['nome']}: carga de TDE ({ra['_tde_horas']}h) excede a carga total do RA ({ra['_meta_total']}h)")
+        ra["_temas_restantes"] = list(ra.get("temas", []))
+        ra["_horas_aula_acumuladas"] = 0.0
+
+    linhas = []
+    ra_idx = 0
+    for encontro in encontros:
+        while (
+            ra_idx < len(ras) - 1
+            and ras[ra_idx]["_horas_aula_acumuladas"] >= ras[ra_idx]["_meta_aula"]
+        ):
+            ra_idx += 1
+        ra = ras[ra_idx]
+        if ra["_temas_restantes"]:
+            descricao = ra["_temas_restantes"].pop(0)
+        else:
+            descricao = "[definir conteúdo]"
+            avisos.append(f"{ra['nome']}: acabaram os temas antes das aulas (encontro de {encontro['data'].isoformat()} sem tema)")
+        linhas.append({
+            "data": encontro["data"].isoformat(),
+            "ra": ra["nome"],
+            "descricao": descricao,
+            "carga_horaria": encontro["horas"],
+        })
+        ra["_horas_aula_acumuladas"] += encontro["horas"]
+
+        # RA trocou de bloco (ou é o último encontro do RA atual) -> insere TDEs pendentes
+        proximo_ra_vai_comecar = ra_idx < len(ras) - 1 and ra["_horas_aula_acumuladas"] >= ra["_meta_aula"]
+        ultimo_encontro_geral = encontro is encontros[-1]
+        if (proximo_ra_vai_comecar or ultimo_encontro_geral) and not ra.get("_tde_inserido"):
+            for tde in ra.get("tde", []):
+                for _ in range(tde["quantidade"]):
+                    linhas.append({
+                        "data": "[professor define a data]",
+                        "ra": ra["nome"],
+                        "descricao": "TDE",
+                        "carga_horaria": tde["horas"],
+                    })
+            ra["_tde_inserido"] = True
+
+    return linhas, avisos
+
+
+def carrega_dados(caminho):
+    with open(caminho, encoding="utf-8") as f:
+        dados = json.load(f)
+    dados["data_inicio"] = parse_data(dados["data_inicio"])
+    dados["data_fim"] = parse_data(dados["data_fim"])
+    dados["dias_semana"] = {normaliza_dia(k): v for k, v in dados["dias_semana"].items()}
+    dados.setdefault("recessos_manuais", [])
+    for ra in dados["ras"]:
+        ra.setdefault("tde", [])
+        ra.setdefault("temas", [])
+    return dados
+
+
+def main():
+    if len(sys.argv) != 2:
+        print("uso: python3 gerar_cronograma.py dados.json", file=sys.stderr)
+        sys.exit(1)
+
+    dados = carrega_dados(sys.argv[1])
+    anos = {dados["data_inicio"].year, dados["data_fim"].year}
+    feriados = busca_feriados_nacionais(anos)
+    aviso_feriados = None
+    if feriados is None:
+        aviso_feriados = "não consegui buscar feriados nacionais na BrasilAPI (sem internet ou API fora do ar) — confirme com o professor se há feriados no período e passe em recessos_manuais"
+        feriados = set()
+
+    linhas, avisos = gera_cronograma(
+        dados["data_inicio"], dados["data_fim"], dados["dias_semana"],
+        feriados, dados["recessos_manuais"], dados["ras"],
+    )
+    if aviso_feriados:
+        avisos.insert(0, aviso_feriados)
+
+    print(json.dumps({"cronograma": linhas, "avisos": avisos}, ensure_ascii=False, indent=2))
+
+
+def demo():
+    """Auto-checagem: roda um caso conhecido e valida as invariantes do
+    algoritmo. python3 gerar_cronograma.py --demo"""
+    ras = [
+        {"nome": "RA1", "percentual": 40, "temas": ["Introdução", "Fundamentos", "Prática 1"], "tde": [{"horas": 4, "quantidade": 1}]},
+        {"nome": "RA2", "percentual": 60, "temas": ["Avançado 1", "Avançado 2", "Projeto", "Revisão"], "tde": []},
+    ]
+    linhas, avisos = gera_cronograma(
+        data_inicio=date(2026, 8, 4),
+        data_fim=date(2026, 10, 27),
+        dias_semana={"terca": 4},
+        feriados_nacionais=set(),
+        recessos_manuais=["2026-09-08"],
+        ras=ras,
+    )
+
+    datas = [l["data"] for l in linhas if l["data"] != "[professor define a data]"]
+    assert datas == sorted(datas), "datas fora de ordem"
+    assert "2026-09-08" not in datas, "recesso manual não foi excluído"
+    for d in datas:
+        assert date.fromisoformat(d).weekday() == 1, f"encontro fora do dia da semana pedido: {d}"
+        assert date(2026, 8, 4) <= date.fromisoformat(d) <= date(2026, 10, 27), f"data fora do range: {d}"
+
+    for ra_nome, ra_pct in [("RA1", 40), ("RA2", 60)]:
+        horas_ra = sum(l["carga_horaria"] for l in linhas if l["ra"] == ra_nome)
+        carga_total = sum(l["carga_horaria"] for l in linhas if l["data"] != "[professor define a data]" or True)
+        # carga_total real (só encontros com data, TDE já está contado em horas_ra também)
+        carga_total = sum(4 for d in datas)  # 4h por encontro nesse cenário fixo
+        meta = carga_total * ra_pct / 100
+        assert abs(horas_ra - meta) <= 4, f"{ra_nome}: horas geradas ({horas_ra}) longe da meta ({meta})"
+
+    tde_linhas = [l for l in linhas if l["descricao"] == "TDE"]
+    assert len(tde_linhas) == 1 and tde_linhas[0]["ra"] == "RA1" and tde_linhas[0]["data"] == "[professor define a data]"
+
+    print(f"demo ok — {len(linhas)} linhas geradas, {len(avisos)} avisos: {avisos}")
+
+
+if __name__ == "__main__":
+    if len(sys.argv) == 2 and sys.argv[1] == "--demo":
+        demo()
+    else:
+        main()
