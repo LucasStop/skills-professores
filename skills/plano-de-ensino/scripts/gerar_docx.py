@@ -26,12 +26,20 @@ import zipfile
 from xml.etree import ElementTree as ET
 
 W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 XML_NS = "http://www.w3.org/XML/1998/namespace"
 ET.register_namespace("w", W_NS)
+ET.register_namespace("r", R_NS)
+
+RODAPE_PADRAO = "Percursos Formativos - Centro de Ensino e Aprendizagem da PUCPR (2026)"
 
 
 def w(tag):
     return f"{{{W_NS}}}{tag}"
+
+
+def r_(tag):
+    return f"{{{R_NS}}}{tag}"
 
 
 def _text_run(parent, texto, negrito=False):
@@ -84,6 +92,8 @@ def _tabela(body, cabecalho, linhas, pesos=None):
             tc = ET.SubElement(tr, w("tc"))
             tcPr = ET.SubElement(tc, w("tcPr"))
             ET.SubElement(tcPr, w("tcW"), {w("w"): str(largura), w("type"): "dxa"})
+            if negrito:
+                ET.SubElement(tcPr, w("shd"), {w("val"): "clear", w("color"): "auto", w("fill"): "D9D9D9"})
             p = ET.SubElement(tc, w("p"))
             _text_run(p, str(valor), negrito=negrito)
 
@@ -111,6 +121,7 @@ def monta_document_xml(blocos):
             raise ValueError(f"tipo de bloco desconhecido: {tipo!r}")
 
     sectPr = ET.SubElement(body, w("sectPr"))
+    ET.SubElement(sectPr, w("footerReference"), {w("type"): "default", r_("id"): "rId2"})
     ET.SubElement(sectPr, w("pgSz"), {w("w"): "11906", w("h"): "16838"})  # A4
     ET.SubElement(sectPr, w("pgMar"), {
         w("top"): "1417", w("right"): "1417", w("bottom"): "1417", w("left"): "1417",
@@ -127,6 +138,7 @@ CONTENT_TYPES_XML = b"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
   <Default Extension="xml" ContentType="application/xml"/>
   <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
   <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
+  <Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>
 </Types>
 """
 
@@ -139,8 +151,19 @@ RELS_XML = b"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 DOCUMENT_RELS_XML = b"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>
 </Relationships>
 """
+
+FOOTER_XML = f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:ftr xmlns:w="{W_NS}">
+  <w:p>
+    <w:pPr><w:jc w:val="center"/></w:pPr>
+    <w:r><w:rPr><w:sz w:val="16"/><w:color w:val="595959"/></w:rPr><w:t xml:space="preserve">{RODAPE_PADRAO} &#183; Página </w:t></w:r>
+    <w:fldSimple w:instr="PAGE"><w:r><w:rPr><w:sz w:val="16"/><w:color w:val="595959"/></w:rPr><w:t>1</w:t></w:r></w:fldSimple>
+  </w:p>
+</w:ftr>
+""".encode("utf-8")
 
 STYLES_XML = b"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -172,6 +195,7 @@ def gera_docx(blocos, caminho_saida):
         z.writestr("word/document.xml", document_xml)
         z.writestr("word/_rels/document.xml.rels", DOCUMENT_RELS_XML)
         z.writestr("word/styles.xml", STYLES_XML)
+        z.writestr("word/footer1.xml", FOOTER_XML)
 
 
 def main():
@@ -207,8 +231,11 @@ def demo():
         with zipfile.ZipFile(caminho) as z:
             nomes = set(z.namelist())
             esperados = {"[Content_Types].xml", "_rels/.rels", "word/document.xml",
-                         "word/_rels/document.xml.rels", "word/styles.xml"}
+                         "word/_rels/document.xml.rels", "word/styles.xml", "word/footer1.xml"}
             assert esperados <= nomes, f"faltam entradas no zip: {esperados - nomes}"
+
+            footer_bytes = z.read("word/footer1.xml")
+            assert RODAPE_PADRAO.encode("utf-8") in footer_bytes, "rodapé institucional ausente no footer1.xml"
 
             xml_bytes = z.read("word/document.xml")
             root = ET.fromstring(xml_bytes)

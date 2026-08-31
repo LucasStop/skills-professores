@@ -27,6 +27,7 @@ CELL_PADDING = 4.0
 
 TAMANHOS = {"titulo1": 16, "titulo2": 13, "paragrafo": 10, "tabela": 9}
 LARGURA_MEDIA_CHAR = {"F1": 0.50, "F2": 0.56}  # fração do font-size, aproximação Helvetica
+RODAPE_PADRAO = "Percursos Formativos - Centro de Ensino e Aprendizagem da PUCPR (2026)"
 
 
 def _escapa_pdf_string(texto):
@@ -77,7 +78,7 @@ class Layout:
         line_height = size * LINE_HEIGHT_FACTOR
         for linha in _quebra_linhas(texto, size, fonte, CONTENT_W):
             self._garante_espaco(line_height)
-            self._pagina_atual().append(("text", MARGIN, self.y - size, fonte, size, linha))
+            self._pagina_atual().append(("text", MARGIN, self.y - size, fonte, size, linha, 0.0))
             self.y -= line_height
 
     def espaco(self, altura):
@@ -102,6 +103,8 @@ class Layout:
             self._garante_espaco(altura_linha)
             y_topo = self.y
             ops = self._pagina_atual()
+            if negrito:
+                ops.append(("rect_fill", x_bordas[0], y_topo, x_bordas[-1] - x_bordas[0], altura_linha))
             for x in x_bordas:
                 ops.append(("line", x, y_topo, x, y_topo - altura_linha))
             ops.append(("line", x_bordas[0], y_topo, x_bordas[-1], y_topo))
@@ -110,7 +113,7 @@ class Layout:
                 cx = x_bordas[i] + CELL_PADDING
                 cy = y_topo - CELL_PADDING - size
                 for linha in celula_linhas:
-                    ops.append(("text", cx, cy, fonte, size, linha))
+                    ops.append(("text", cx, cy, fonte, size, linha, 0.0))
                     cy -= line_height
             self.y -= altura_linha
 
@@ -149,19 +152,36 @@ def _stream_da_pagina(ops):
     partes = [b"q\n"]
     for op in ops:
         if op[0] == "text":
-            _, x, y, fonte, size, texto = op
+            _, x, y, fonte, size, texto, cor_cinza = op
+            partes.append(f"{cor_cinza:.2f} g\n".encode("ascii"))
             partes.append(f"BT\n/{fonte} {size} Tf\n{x:.2f} {y:.2f} Td\n".encode("ascii"))
             partes.append(b"(" + _escapa_pdf_string(texto) + b") Tj\n")
             partes.append(b"ET\n")
         elif op[0] == "line":
             _, x1, y1, x2, y2 = op
-            partes.append(f"{x1:.2f} {y1:.2f} m {x2:.2f} {y2:.2f} l S\n".encode("ascii"))
+            partes.append(f"0 g\n{x1:.2f} {y1:.2f} m {x2:.2f} {y2:.2f} l S\n".encode("ascii"))
+        elif op[0] == "rect_fill":
+            _, x, y_topo, largura, altura = op
+            partes.append(f"0.85 g\n{x:.2f} {y_topo - altura:.2f} {largura:.2f} {altura:.2f} re f\n".encode("ascii"))
     partes.append(b"Q\n")
     return b"".join(partes)
 
 
+def _adiciona_rodape(paginas_ops):
+    total = len(paginas_ops)
+    size = 8
+    fonte = "F1"
+    for i, ops in enumerate(paginas_ops):
+        texto = f"{RODAPE_PADRAO} · Página {i + 1} de {total}"
+        largura = _largura_texto(texto, size, fonte)
+        x = max(MARGIN, (PAGE_W - largura) / 2)
+        y = MARGIN / 2
+        ops.append(("text", x, y, fonte, size, texto, 0.35))
+
+
 def gera_pdf(blocos, caminho_saida):
     paginas_ops = monta_layout(blocos)
+    _adiciona_rodape(paginas_ops)
 
     objetos = {}  # numero -> bytes do corpo do objeto (sem "N 0 obj"/"endobj")
     objetos[1] = b"<< /Type /Catalog /Pages 2 0 R >>"
@@ -257,6 +277,8 @@ def demo():
         assert n_paginas >= 2, f"esperava pelo menos 2 páginas (cronograma longo força quebra), achei {n_paginas}"
         assert b"Disciplina Teste" in conteudo, "texto do titulo1 não apareceu no stream"
         assert b"Tema 1" in conteudo, "conteudo da tabela nao apareceu no stream"
+        assert b"Centro de Ensino e Aprendizagem da PUCPR" in conteudo, "rodapé institucional ausente no stream"
+        assert b"0.85 g" in conteudo, "sombreado do cabecalho da tabela ausente"
 
         # confere que os offsets do xref batem com onde cada "N 0 obj" realmente comeca
         linhas = conteudo.split(b"\nxref\n", 1)[1].split(b"\ntrailer")[0].splitlines()
