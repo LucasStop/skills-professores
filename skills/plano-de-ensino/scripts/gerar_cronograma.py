@@ -114,7 +114,8 @@ def gera_cronograma(data_inicio, data_fim, dias_semana, feriados_nacionais, rece
             descricao = "[definir conteúdo]"
             avisos.append(f"{ra['nome']}: acabaram os temas antes das aulas (encontro de {encontro['data'].isoformat()} sem tema)")
         linhas.append({
-            "data": encontro["data"].isoformat(),
+            "data": encontro["data"].strftime("%d/%m"),  # formato brasileiro, sem ano (bate com os planos reais mapeados)
+            "data_iso": encontro["data"].isoformat(),
             "ra": ra["nome"],
             "descricao": descricao,
             "carga_horaria": encontro["horas"],
@@ -129,6 +130,7 @@ def gera_cronograma(data_inicio, data_fim, dias_semana, feriados_nacionais, rece
                 for _ in range(tde["quantidade"]):
                     linhas.append({
                         "data": "[professor define a data]",
+                        "data_iso": None,
                         "ra": ra["nome"],
                         "descricao": "TDE",
                         "carga_horaria": tde["horas"],
@@ -190,18 +192,20 @@ def demo():
         ras=ras,
     )
 
-    datas = [l["data"] for l in linhas if l["data"] != "[professor define a data]"]
-    assert datas == sorted(datas), "datas fora de ordem"
-    assert "2026-09-08" not in datas, "recesso manual não foi excluído"
-    for d in datas:
+    datas_iso = [l["data_iso"] for l in linhas if l["data_iso"] is not None]
+    datas_br = [l["data"] for l in linhas if l["data_iso"] is not None]
+    assert datas_iso == sorted(datas_iso), "datas fora de ordem"
+    assert "2026-09-08" not in datas_iso, "recesso manual não foi excluído"
+    for d in datas_iso:
         assert date.fromisoformat(d).weekday() == 1, f"encontro fora do dia da semana pedido: {d}"
         assert date(2026, 8, 4) <= date.fromisoformat(d) <= date(2026, 10, 27), f"data fora do range: {d}"
+    for d_iso, d_br in zip(datas_iso, datas_br):
+        assert d_br == date.fromisoformat(d_iso).strftime("%d/%m"), f"data BR não bate com data_iso: {d_br} vs {d_iso}"
+        assert "/" in d_br and len(d_br) == 5, f"data não está no formato DD/MM: {d_br!r}"
 
     for ra_nome, ra_pct in [("RA1", 40), ("RA2", 60)]:
         horas_ra = sum(l["carga_horaria"] for l in linhas if l["ra"] == ra_nome)
-        carga_total = sum(l["carga_horaria"] for l in linhas if l["data"] != "[professor define a data]" or True)
-        # carga_total real (só encontros com data, TDE já está contado em horas_ra também)
-        carga_total = sum(4 for d in datas)  # 4h por encontro nesse cenário fixo
+        carga_total = sum(4 for _ in datas_iso)  # 4h por encontro nesse cenário fixo
         meta = carga_total * ra_pct / 100
         assert abs(horas_ra - meta) <= 4, f"{ra_nome}: horas geradas ({horas_ra}) longe da meta ({meta})"
 
