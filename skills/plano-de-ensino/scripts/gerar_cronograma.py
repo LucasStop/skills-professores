@@ -11,11 +11,13 @@ Uso:
 
 Cada linha de saída traz: indice (nº sequencial da sessão, None pra TDE sem
 data fixa — mesmo padrão de linha administrativa sem número dos planos
-reais), data (DD/MM ou DD/MM/AAAA conforme "formato_data"), data_iso (uso
-interno), ra, descricao, carga_horaria (número, uso interno) e
+reais), data (DD/MM ou DD/MM/AAAA conforme "formato_data" — ou o rótulo do
+período, ex: "Semana de 04/08 a 08/08", se "granularidade" != "dia"),
+data_iso (uso interno), ra, descricao, carga_horaria (número, uso interno) e
 carga_horaria_fmt ("HH:MM", formato dos planos reais). O documento final usa
 indice/data/ra/descricao/carga_horaria_fmt — "#" é a primeira coluna da
-tabela de cronograma no template oficial.
+tabela de cronograma no template oficial ("Data" ou "Período", conforme a
+granularidade).
 
 Formato de dados.json:
 {
@@ -23,11 +25,22 @@ Formato de dados.json:
   "data_fim": "2026-12-05",
   "dias_semana": {"terca": 4},                # ou {"terca": 2, "quinta": 2}
   "recessos_manuais": ["2026-11-02"],          # pontos facultativos institucionais
-  "formato_data": "dd_mm",                     # ou "dd_mm_aaaa" — opcional, default "dd_mm"
+  "formato_data": "dd_mm",                     # ou "dd_mm_aaaa" — opcional, default "dd_mm";
+                                                 # só relevante se granularidade == "dia"
   "feriados_como_linha": false,                 # opcional — true: feriado nacional ("Feriado") e
                                                  # recesso manual ("Recesso Acadêmico") viram linha
                                                  # visível no cronograma (RA "-", carga horária do
                                                  # dia, não consome a meta de nenhum RA)
+  "granularidade": "dia",                       # opcional — "dia" (default), "semana", "quinzena"
+                                                 # ou "mes": agrupa encontros consecutivos do mesmo
+                                                 # RA no mesmo período numa linha só (soma carga
+                                                 # horária, junta as descrições) — a % de cada RA
+                                                 # não muda, só a apresentação. Coluna "data" passa
+                                                 # a trazer o rótulo do período em vez da data.
+  "datas_2a_chamada": [                          # opcional — datas previstas de avaliação de 2ª
+    {"data": "2026-11-10", "descricao": "2ª Chamada"}   # chamada (Art. 29, Resolução 414/2024). Se a
+  ],                                              # data cai num encontro existente, anota nele; senão
+                                                   # vira linha própria (RA "-", mesmo padrão de feriado)
   "ras": [
     {"nome": "RA1", "percentual": 30, "temas": ["Tema A", "Tema B"],
      "tde": [{"horas": 4, "quantidade": 1}]},
@@ -43,6 +56,8 @@ import urllib.request
 from datetime import date, timedelta
 
 DIAS_SEMANA_PT = ["segunda", "terca", "quarta", "quinta", "sexta", "sabado", "domingo"]
+MESES_PT = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho",
+            "agosto", "setembro", "outubro", "novembro", "dezembro"]
 
 
 def formata_carga_horaria(horas):
@@ -71,12 +86,16 @@ def parse_data(s):
 def busca_feriados_nacionais(anos):
     """GET BrasilAPI (stdlib urllib, sem chave). Retorna set de 'YYYY-MM-DD' ou
     None se não conseguir buscar (sem internet, API fora do ar, etc) — quem
-    chama decide o fallback (pedir a lista manual ao professor)."""
+    chama decide o fallback (pedir a lista manual ao professor).
+
+    User-Agent explícito é obrigatório: o WAF da BrasilAPI (Cloudflare)
+    devolve 403 pro User-Agent padrão do urllib ("Python-urllib/3.x")."""
     feriados = set()
     for ano in sorted(anos):
         url = f"https://brasilapi.com.br/api/feriados/v1/{ano}"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         try:
-            with urllib.request.urlopen(url, timeout=5) as resp:
+            with urllib.request.urlopen(req, timeout=5) as resp:
                 dados = json.loads(resp.read().decode("utf-8"))
             feriados.update(item["date"] for item in dados)
         except (urllib.error.URLError, TimeoutError, ValueError, KeyError, OSError):
@@ -106,8 +125,106 @@ def gera_encontros(data_inicio, data_fim, dias_semana, feriados_nacionais, reces
     return encontros
 
 
+def _rotulo_periodo(data, granularidade):
+    if granularidade == "semana":
+        inicio = data - timedelta(days=data.weekday())
+        fim = inicio + timedelta(days=6)
+        return f"Semana de {inicio.strftime('%d/%m')} a {fim.strftime('%d/%m')}"
+    if granularidade == "quinzena":
+        quinzena = "1ª" if data.day <= 15 else "2ª"
+        return f"{quinzena} quinzena de {MESES_PT[data.month - 1]}"
+    if granularidade == "mes":
+        return f"{MESES_PT[data.month - 1]} de {data.year}"
+    raise ValueError(f"granularidade desconhecida: {granularidade!r}")
+
+
+def agrupa_por_periodo(linhas, granularidade):
+    """Junta encontros consecutivos do mesmo RA no mesmo período (semana/
+    quinzena/mês) numa linha só — soma carga horária, concatena descrições.
+    Linhas sem data fixa (TDE, 2ª chamada avulsa) nunca agrupam."""
+    if granularidade == "dia":
+        return linhas
+
+    def fecha(bucket):
+        itens = bucket["linhas"]
+        if len(itens) == 1:
+            l = dict(itens[0])
+            l["data"] = bucket["label"]
+            return l
+        return {
+            "indice": itens[0]["indice"],
+            "data": bucket["label"],
+            "data_iso": itens[0]["data_iso"],
+            "ra": itens[0]["ra"],
+            "descricao": "; ".join(dict.fromkeys(i["descricao"] for i in itens)),
+            "carga_horaria": sum(i["carga_horaria"] for i in itens),
+            "carga_horaria_fmt": formata_carga_horaria(sum(i["carga_horaria"] for i in itens)),
+        }
+
+    agrupadas = []
+    bucket_atual = None
+    for linha in linhas:
+        if linha["data_iso"] is None:
+            if bucket_atual:
+                agrupadas.append(fecha(bucket_atual))
+                bucket_atual = None
+            agrupadas.append(linha)
+            continue
+        label = _rotulo_periodo(date.fromisoformat(linha["data_iso"]), granularidade)
+        chave = (linha["ra"], label)
+        if bucket_atual and bucket_atual["chave"] == chave:
+            bucket_atual["linhas"].append(linha)
+        else:
+            if bucket_atual:
+                agrupadas.append(fecha(bucket_atual))
+            bucket_atual = {"chave": chave, "label": label, "linhas": [linha]}
+    if bucket_atual:
+        agrupadas.append(fecha(bucket_atual))
+    return agrupadas
+
+
+def insere_2a_chamada(linhas, datas_2a_chamada, fmt_strftime):
+    """Cada item: {"data": "YYYY-MM-DD", "descricao": "2ª Chamada" (opcional),
+    "carga_horaria": 0 (opcional, só usada se a data não cair num encontro
+    existente)}. Se cair, anota o encontro; senão insere linha própria
+    (RA "-", mesmo padrão de feriado/recesso) na posição cronológica certa."""
+    for item in datas_2a_chamada:
+        iso = item["data"]
+        tag = item.get("descricao", "2ª Chamada")
+        achou = False
+        for linha in linhas:
+            if linha["data_iso"] == iso and linha["ra"] != "-":
+                linha["descricao"] += f" [{tag}]"
+                achou = True
+                break
+        if achou:
+            continue
+        horas = item.get("carga_horaria", 0)
+        nova = {
+            "indice": 0,  # renumerado depois
+            "data": date.fromisoformat(iso).strftime(fmt_strftime),
+            "data_iso": iso,
+            "ra": "-",
+            "descricao": tag,
+            "carga_horaria": horas,
+            "carga_horaria_fmt": formata_carga_horaria(horas),
+        }
+        pos = next((i for i, l in enumerate(linhas) if l["data_iso"] is not None and l["data_iso"] > iso), len(linhas))
+        linhas.insert(pos, nova)
+    return linhas
+
+
+def renumera_indices(linhas):
+    idx = 1
+    for linha in linhas:
+        if linha["indice"] is not None:
+            linha["indice"] = idx
+            idx += 1
+    return linhas
+
+
 def gera_cronograma(data_inicio, data_fim, dias_semana, feriados_nacionais, recessos_manuais, ras,
-                     formato_data="dd_mm", feriados_como_linha=False):
+                     formato_data="dd_mm", feriados_como_linha=False, granularidade="dia", datas_2a_chamada=None):
     """Retorna (linhas, avisos). linhas = [{data, ra, descricao, carga_horaria}]."""
     avisos = []
     fmt_strftime = "%d/%m/%Y" if formato_data == "dd_mm_aaaa" else "%d/%m"
@@ -187,6 +304,11 @@ def gera_cronograma(data_inicio, data_fim, dias_semana, feriados_nacionais, rece
                     })
             ra["_tde_inserido"] = True
 
+    if datas_2a_chamada:
+        linhas = insere_2a_chamada(linhas, datas_2a_chamada, fmt_strftime)
+    linhas = agrupa_por_periodo(linhas, granularidade)
+    linhas = renumera_indices(linhas)
+
     return linhas, avisos
 
 
@@ -199,6 +321,8 @@ def carrega_dados(caminho):
     dados.setdefault("recessos_manuais", [])
     dados.setdefault("formato_data", "dd_mm")
     dados.setdefault("feriados_como_linha", False)
+    dados.setdefault("granularidade", "dia")
+    dados.setdefault("datas_2a_chamada", [])
     for ra in dados["ras"]:
         ra.setdefault("tde", [])
         ra.setdefault("temas", [])
@@ -222,6 +346,7 @@ def main():
         dados["data_inicio"], dados["data_fim"], dados["dias_semana"],
         feriados, dados["recessos_manuais"], dados["ras"],
         formato_data=dados["formato_data"], feriados_como_linha=dados["feriados_como_linha"],
+        granularidade=dados["granularidade"], datas_2a_chamada=dados["datas_2a_chamada"],
     )
     if aviso_feriados:
         avisos.insert(0, aviso_feriados)
@@ -291,7 +416,45 @@ def demo():
     datas_normais = [l for l in linhas_fer if l["ra"] == "RA1"]
     assert all("/" in l["data"] and len(l["data"]) == 10 for l in datas_normais), "formato_data dd_mm_aaaa não aplicado às linhas normais"
 
-    print(f"demo ok — {len(linhas)} linhas geradas, {len(avisos)} avisos: {avisos} | feriado-linha: {len(linhas_fer)} linhas, {len(avisos_fer)} avisos")
+    # granularidade="semana": 2 encontros/semana (terça+quinta) viram 1 linha
+    # por semana, carga horária somada, descrições concatenadas.
+    linhas_semana, _ = gera_cronograma(
+        data_inicio=date(2026, 8, 4),
+        data_fim=date(2026, 8, 13),
+        dias_semana={"terca": 4, "quinta": 4},
+        feriados_nacionais=set(),
+        recessos_manuais=[],
+        ras=[{"nome": "RA1", "percentual": 100, "temas": ["Tema A", "Tema B", "Tema C", "Tema D"], "tde": []}],
+        granularidade="semana",
+    )
+    assert len(linhas_semana) == 2, f"esperava 2 linhas (1 por semana), veio {len(linhas_semana)}"
+    assert linhas_semana[0]["carga_horaria"] == 8 and linhas_semana[1]["carga_horaria"] == 8, "carga horária não somada no agrupamento"
+    assert linhas_semana[0]["descricao"] == "Tema A; Tema B", f"descrição não concatenada: {linhas_semana[0]['descricao']!r}"
+    assert linhas_semana[1]["descricao"] == "Tema C; Tema D"
+    assert "Semana de" in linhas_semana[0]["data"], f"rótulo de período ausente: {linhas_semana[0]['data']!r}"
+    assert [l["indice"] for l in linhas_semana] == [1, 2], "índices não renumerados após agrupamento"
+
+    # datas_2a_chamada: data que cai num encontro existente anota a linha;
+    # data que não cai vira linha própria, na posição cronológica certa.
+    linhas_2a, _ = gera_cronograma(
+        data_inicio=date(2026, 8, 4),
+        data_fim=date(2026, 8, 25),
+        dias_semana={"terca": 4},
+        feriados_nacionais=set(),
+        recessos_manuais=[],
+        ras=[{"nome": "RA1", "percentual": 100, "temas": ["A", "B", "C", "D"], "tde": []}],
+        datas_2a_chamada=[{"data": "2026-08-11"}, {"data": "2026-08-20", "descricao": "2ª Chamada Especial"}],
+    )
+    assert len(linhas_2a) == 5, f"esperava 5 linhas (4 encontros + 1 avulsa), veio {len(linhas_2a)}"
+    linha_anotada = next(l for l in linhas_2a if l["data_iso"] == "2026-08-11")
+    assert linha_anotada["descricao"].endswith(" [2ª Chamada]"), f"anotação de 2ª chamada ausente: {linha_anotada['descricao']!r}"
+    linha_avulsa = next(l for l in linhas_2a if l["data_iso"] == "2026-08-20")
+    assert linha_avulsa["ra"] == "-" and linha_avulsa["descricao"] == "2ª Chamada Especial"
+    datas_ordem = [l["data_iso"] for l in linhas_2a]
+    assert datas_ordem == sorted(datas_ordem), "linha de 2ª chamada avulsa não ficou na posição cronológica certa"
+    assert [l["indice"] for l in linhas_2a] == list(range(1, 6)), "índices não renumerados após inserir 2ª chamada"
+
+    print(f"demo ok — {len(linhas)} linhas geradas, {len(avisos)} avisos: {avisos} | feriado-linha: {len(linhas_fer)} | semana: {len(linhas_semana)} | 2ª chamada: {len(linhas_2a)}")
 
 
 if __name__ == "__main__":
