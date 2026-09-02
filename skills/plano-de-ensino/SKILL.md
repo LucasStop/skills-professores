@@ -40,6 +40,8 @@ Monte `documento.json` (lista de blocos `titulo1`/`titulo2`/`paragrafo`/`tabela`
 
 A coluna `RA` do cronograma aceita múltiplos valores (`RA1, RA2`) ou o literal `Todos` pra linhas que não pertencem a um RA só (revisão, feedback) — ajuste manual, nenhum script gera isso sozinho.
 
+Linhas de avaliação somativa (fechamento de RA) levam destaque visual (vermelho mais fraco) no cronograma — marque com `"_destaque": true` na linha correspondente ao montar `dados_preenchimento.json` (ver contrato de `linhas_repetir` na docstring de `scripts/preencher_template.py`). Nenhum script decide isso sozinho.
+
 Se o Bloco 1 confirmou que a Escola exige "Regras da Disciplina", inclua essa seção (usar o boilerplate documentado em `references/template-pucpr.md`) antes da Bibliografia, e ajuste a numeração dos títulos (Bibliografia vira 7, Orientações Gerais vira 8); senão, segue a numeração oficial (Bibliografia 6, Orientações Gerais 7).
 
 Bibliografia: se o professor pediu lista numerada ou bullets (em vez de tabela), monte como sequência de blocos `"paragrafo"` com o número/bullet já no texto (`"1. Autor..."` ou `"• Autor..."`) em vez de um bloco `"tabela"`.

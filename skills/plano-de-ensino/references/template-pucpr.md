@@ -51,7 +51,7 @@ Tabela com 5 colunas: **# | Data/Período | RA | Descrição das atividades peda
 - **Feriados nacionais**: por padrão somem do cronograma (excluídos via BrasilAPI). Se o professor pedir (`feriados_como_linha: true` em `dados.json`), aparecem como linha normal numerada, `RA: -`, descrição `Feriado`, com a carga horária do dia — sem consumir a meta de nenhum RA.
 - **2ª chamada** (exigência do template oficial, Art. 29 da Resolução 414/2024 CONSUN): as datas previstas devem estar sinalizadas no cronograma. Se caem num encontro já calculado, anota na descrição (`+ " [2ª Chamada]"`); se não, entram como linha própria. Vira `datas_2a_chamada` em `dados.json`.
 - **TDE**: sinalizado com a sigla "TDE" antes da descrição, carga horária na coluna própria — template oficial menciona também "TDE integrado entre disciplinas" como caso possível (carga horária atribuída a ele mencionada igual).
-- Linhas de avaliação somativa e datas institucionais (Acolhida Cultural, Semana Acadêmica) costumam vir destacadas com uma cor de fundo diferente nos planos reais — a skill não replica isso (cosmético, sem prejuízo de conteúdo).
+- **Estilo padrão da tabela** (`assets/template-oficial-tokenizado.docx`): texto preto, Período/RA/Carga horária centralizados, Descrição alinhada à esquerda. Linhas de avaliação somativa (fechamento de RA) costumam vir destacadas com uma cor de fundo diferente nos planos reais — replicado via flag `"_destaque": true` na linha, em `linhas_repetir` de `preencher_template.py` (pinta a linha de vermelho mais fraco, `F2DCDB`; ajuste manual de quem monta `documento.json`, nenhum script decide isso sozinho).
 - Nota de rodapé da tabela: `*O cronograma está sujeito a alterações conforme necessidade.`
 - Ver `../scripts/gerar_cronograma.py` — essa seção é calculada, não preenchida à mão.
 
@@ -90,3 +90,15 @@ Conseguido — "Plano de ensino PUCPR - novo template (2026)". Sem content contr
 - `scripts/preencher_template.py` preenche o tokenizado com os dados da entrevista, preservando a arte institucional (faixa, selo, cores, logo "creare") — via substituição de string no XML bruto, nunca reserializando a árvore inteira (ver docstring do script pro porquê).
 
 `scripts/gerar_docx.py`/`gerar_pdf.py` continuam existindo como alternativa sem a arte institucional (só texto, tabelas e rodapé), útil se algum dia o `.docx` oficial não estiver disponível.
+
+## Layout fixo por página (`assets/template-oficial-tokenizado.docx`)
+
+`scripts/limpar_template_oficial.py` marca `w:pageBreakBefore` nos headings de 5 seções, fixando o agrupamento por página independente de quanto texto vem antes:
+- Capa + tabela de identificação sozinhas na 1ª página (quebra antes de "1. Ementa").
+- Ementa (1) + Contexto da Disciplina (2) juntos.
+- Competências (3) sozinha (quebra antes dela).
+- Alinhamento Construtivo (4) sozinha (quebra antes dela).
+- Cronograma (5) sozinha — pode espalhar por várias páginas conforme o nº de linhas, mas sempre começa numa nova (quebra antes dela).
+- Bibliografia (6) + Orientações Gerais (7) juntas (quebra antes de Bibliografia, nenhuma antes de Orientações Gerais).
+
+Se o template oficial da PUCPR mudar de estrutura, reconferir esses 5 textos de heading em `main()` do script — o casamento é por texto exato do parágrafo.

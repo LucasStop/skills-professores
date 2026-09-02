@@ -42,6 +42,13 @@ Contrato do template:
   `linhas_repetir`) — a tabela inteira (heading + linha-molde) some sozinha.
   Mesma lógica inversa pra `IM_RA`/`linhas_repetir["IM_RA"]` se a disciplina
   for só Certificadora. Disciplina mista usa as duas normalmente.
+- Destaque de linha (ex: linha de avaliação somativa que fecha um RA no
+  cronograma): item de `linhas_repetir` com `"_destaque": true` pinta as
+  células daquela linha clonada com um vermelho mais fraco (`F2DCDB`) — não
+  vira placeholder no documento, é lida e descartada antes da substituição
+  normal. Nenhum script decide sozinho quais linhas levam destaque — vem do
+  professor/da montagem do `documento.json`, mesmo padrão de ajuste manual
+  da coluna RA.
 
 Uso:
     python3 preencher_template.py template.docx dados.json saida.docx
@@ -71,8 +78,24 @@ TBL_RE = re.compile(r"<w:tbl(?:\s[^>]*)?>.*?</w:tbl>", re.DOTALL)
 T_RE = re.compile(r"<w:t(?:\s[^>]*)?>(.*?)</w:t>", re.DOTALL)
 
 
+DESTAQUE_FILL = "F2DCDB"  # vermelho mais fraco — linha de avaliação/fechamento de RA no cronograma
+
+
 def _escapa(texto):
     return texto.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _aplica_destaque(clone):
+    """Pinta o fundo de cada célula de uma linha de tabela clonada — `w:shd`
+    precisa entrar depois de `</w:tcBorders>` e antes de `<w:hideMark/>`
+    (ordem exigida pelo schema OOXML de `w:tcPr`; fora de ordem, o Word
+    marca o documento como corrompido)."""
+    if "</w:tcBorders>" not in clone:
+        return clone
+    return clone.replace(
+        "</w:tcBorders>",
+        f'</w:tcBorders><w:shd w:val="clear" w:color="auto" w:fill="{DESTAQUE_FILL}"/>',
+    )
 
 
 def _texto_p(bloco):
@@ -181,9 +204,13 @@ def preenche(template_path, dados, saida_path):
         inicio, fim, molde = achado
         clones = []
         for linha_valores in linhas:
+            linha_valores = dict(linha_valores)
+            destaque = linha_valores.pop("_destaque", False)
             clone = molde
             for token, valor in linha_valores.items():
                 clone = clone.replace("{{" + token + "}}", _escapa(str(valor)))
+            if destaque:
+                clone = _aplica_destaque(clone)
             clones.append(clone)
         xml = xml[:inicio] + "".join(clones) + xml[fim:]
 
@@ -280,7 +307,7 @@ def demo():
                 ],
                 "CRONO_INDICE": [
                     {"CRONO_INDICE": "1", "CRONO_DATA": "04/08/2026", "CRONO_RA": "RA1", "CRONO_DESC": "Introdução"},
-                    {"CRONO_INDICE": "2", "CRONO_DATA": "11/08/2026", "CRONO_RA": "RA1", "CRONO_DESC": "Pirâmide de Testes"},
+                    {"CRONO_INDICE": "2", "CRONO_DATA": "11/08/2026", "CRONO_RA": "RA1", "CRONO_DESC": "Pirâmide de Testes", "_destaque": True},
                 ]
             },
             # só 1 seção opcional fornecida — o template tem 2 slots, o
@@ -311,6 +338,19 @@ def demo():
         assert "Diagnóstica: exemplo." in xml_saida and "Formativa: exemplo." in xml_saida, "tópicos não foram clonados em parágrafos separados"
         assert xml_saida.count("Diagnóstica: exemplo.") == 1 and xml_saida.count("Formativa: exemplo.") == 1, "clonagem de tópico duplicou conteúdo"
         assert "SECAO_OPCIONAL_2" not in xml_saida, "slot de seção opcional não usado deveria ter sido removido por inteiro"
+
+    # _aplica_destaque isolado — o template fabricado por gerar_docx.py (usado
+    # só nesta demo) não tem <w:tcBorders> como o .docx oficial real, então o
+    # round-trip acima não exercita o shading; testa a função direto.
+    tc_normal = (
+        '<w:tc><w:tcPr><w:tcW w:w="100" w:type="dxa"/>'
+        '<w:tcBorders><w:top w:val="nil"/></w:tcBorders><w:hideMark/></w:tcPr>'
+        '<w:p><w:r><w:t>x</w:t></w:r></w:p></w:tc>'
+    )
+    tc_destacada = _aplica_destaque(tc_normal)
+    assert f'w:fill="{DESTAQUE_FILL}"' in tc_destacada, "shd de destaque não inserido"
+    assert tc_destacada.index("<w:shd") < tc_destacada.index("<w:hideMark/>"), "w:shd fora de ordem (schema exige depois de tcBorders, antes de hideMark)"
+    assert _aplica_destaque("<w:p>sem célula</w:p>") == "<w:p>sem célula</w:p>", "clone sem tcBorders (ex: linha de <w:p>) não deveria ser alterado"
 
     print("demo ok — template preenchido, mc:Ignorable preservado, placeholders, linha de tabela e seções opcionais corretos")
 
