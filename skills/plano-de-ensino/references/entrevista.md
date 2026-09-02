@@ -12,7 +12,7 @@ Rodadas curtas (2-3 perguntas via `AskUserQuestion`), assert-then-confirm quando
 - Ementa (parágrafo descritivo — pode ser rascunhado a partir de uma lista de tópicos que o professor der, e volta pra confirmação).
 - Competências/Elementos de Competência e Resultados de Aprendizagem (RA) — quantos RAs, nome/descrição de cada um.
 - Metodologia (expositiva, PjBL, TBL, estudo de caso, laboratório — pode ser mais de uma).
-- Se usa Mapa Mental (seção 3.1, opcional).
+- Se quer incluir uma imagem/diagrama no fim da seção 3 (opcional — nos 7 planos mapeados, todos têm alguma imagem ali, mas só 2 rotulam como "Mapa Mental"; os outros a colocam sem título, e o conteúdo varia — mapa mental, diagrama de processo, até screenshot de aplicativo). Se sim, pergunta o título (ou "sem título") e o que ela representa; a skill não gera a imagem, só reserva o espaço/heading — o professor insere depois de aberto o .docx.
 
 ## Bloco 3 — Avaliação
 - **Layout da seção 3 (Competências/Temas de Estudo/RA)**: pergunta qual dos 3 formatos reais o professor quer — (a) 3 tabelas separadas (Temas de Estudo / Competências / RA, **padrão sugerido**), (b) tabela única de 4 colunas (Competência+EC mesclados | I/M | Temas de Estudo | RA), (c) tabela única de 5 colunas (Competência | EC | I/M | Temas de Estudo | RA). Ver `template-pucpr.md` seção 3.

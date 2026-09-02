@@ -25,7 +25,7 @@ A skill pergunta na entrevista (Bloco 3) qual dos 3 layouts reais usar — não 
 
 **(c) Tabela única de 5 colunas**: Competência | Elemento de Competência (coluna própria) | I/M | Temas de Estudo | RA.
 
-- **Mapa Mental** (diagrama visual, opcional — pular se não fizer sentido pra disciplina).
+- **Imagem/diagrama de fechamento** (opcional): nos 7 planos mapeados, todos têm alguma imagem no fim da seção 3, mas só 2 (as duas da Marina — Data Analytics, Inteligência Artificial) rotulam como "Mapa Mental". Os outros 5 colocam a imagem direto, sem título, e o conteúdo varia — mapa mental, diagrama de processo (ex: pipeline ETL), até screenshot de aplicativo (Unreal). Não é convenção fixa da PUCPR, é escolha por professor — a entrevista pergunta se quer incluir, com que título (ou nenhum). A skill não gera a imagem em si, só reserva o espaço no documento.
 
 ## 4. Alinhamento Construtivo: Metodologia e Avaliação
 Uma tabela por RA: Resultado(s) de aprendizagem | Indicadores de desempenho (IDx.y) | Metodologias/recursos/estratégias de ensino-aprendizagem | Processos de avaliação e recuperação de aprendizagem — este último detalha por tipo: `[Diagnóstica]`, `[Formativa]`, `[Somativa]`, `[Recuperação]` (ao longo do semestre e/ou estendida), cada um com o feedback e formato descritos.
