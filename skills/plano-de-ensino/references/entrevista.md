@@ -4,7 +4,7 @@ Rodadas curtas (2-3 perguntas via `AskUserQuestion`), assert-then-confirm quando
 
 ## Bloco 1 — Identificação
 - Nome da disciplina, semestre (ex: "2026/2"), professor.
-- Curso/Período/Turma/Turno.
+- Curso/Período/Turma/Turno — "Curso" é campo livre (Bacharelado, Tecnólogo, etc), não assumir Bacharelado por padrão.
 - Carga horária, créditos, carga horária de extensão.
 - Requisitos/código da disciplina, disciplinas pré-requisito e disciplinas beneficiadas depois (seção 2 — Contexto da Disciplina).
 
@@ -15,24 +15,27 @@ Rodadas curtas (2-3 perguntas via `AskUserQuestion`), assert-then-confirm quando
 - Se usa Mapa Mental (seção 3.1, opcional).
 
 ## Bloco 3 — Avaliação
-- Como cada RA compõe a nota final: % simples por RA, % por instrumento dentro do RA (com fórmula final), ou pontos absolutos somando 10 — ver exemplos em `template-pucpr.md` seção 4.
+- **Layout da seção 3 (Competências/Temas de Estudo/RA)**: pergunta qual dos 3 formatos reais o professor quer — (a) 3 tabelas separadas (Temas de Estudo / Competências / RA, **padrão sugerido**), (b) tabela única de 4 colunas (Competência+EC mesclados | I/M | Temas de Estudo | RA), (c) tabela única de 5 colunas (Competência | EC | I/M | Temas de Estudo | RA). Ver `template-pucpr.md` seção 3.
+- Como cada RA compõe a nota final: % simples por RA, % por instrumento dentro do RA (com fórmula final), pontos absolutos somando 10, % embutido no rótulo do próprio RA (ex: "RA1... (30%)"), tabela dedicada "Avaliações Somativas" antes do cronograma, ou nenhuma fórmula (prosa vaga) — pergunta qual o professor quer, sem assumir uma única forma. Ver exemplos em `template-pucpr.md` seção 4/6.
 - Critério de recuperação (2ª chamada, prazo, formato).
 
 ## Bloco 4 — Cronograma (o bloco com lógica de verdade — ver `scripts/gerar_cronograma.py`)
 Perguntas objetivas, sem deixar implícito:
 1. **Range de datas**: início e fim do período letivo (ex: "05/08/2026 a 05/12/2026").
 2. **Dias de aula e carga horária de cada um**: quais dias da semana tem aula e quantas horas em cada — se for igual todo dia, uma resposta só; se variar (ex: terça 2h, quinta 2h), pedir por dia.
-3. **RAs e distribuição de tempo**: os RAs já vieram do Bloco 2 — agora pergunta o % (ou peso) de carga horária de cada um dentro do cronograma (ex: "RA1 30%, RA2 30%, RA3 40%"). Confirma que soma 100%.
-4. **Temas por RA**: lista de temas/conteúdos de cada RA, na ordem que devem ser ensinados — vira a coluna "Descrição das atividades pedagógicas". Se a lista de temas for mais curta que o número de aulas calculado pro RA, a skill sinaliza a lacuna em vez de inventar conteúdo.
-5. **TDE**: quantos TDEs por RA, carga horária de cada um. A data exata de cada TDE fica em aberto ("[professor define a data]", sem número de sessão) — quem decide o dia é o professor, não a skill.
-6. **Recessos/pontos facultativos institucionais** (não são feriado nacional — feriados nacionais entram sozinhos via BrasilAPI, não precisa perguntar): pede se há alguma data assim conhecida no período (ex: recesso acadêmico da Semana Santa).
-7. **Datas institucionais sem RA** (opcional): se o professor quiser marcar no cronograma datas fixas de atividades institucionais que não pertencem a nenhum RA (Acolhida Cultural, Semana Acadêmica, Feedback de notas finais) — entram na tabela com `RA: -`, inseridas manualmente na posição certa depois que `gerar_cronograma.py` monta a base (o calculador não sabe essas datas de antemão).
+3. **Formato de data**: `DD/MM` (padrão sugerido, sem ano) ou `DD/MM/AAAA` (com ano) — vira `formato_data` em `dados.json`.
+4. **RAs e distribuição de tempo**: os RAs já vieram do Bloco 2 — agora pergunta o % (ou peso) de carga horária de cada um dentro do cronograma (ex: "RA1 30%, RA2 30%, RA3 40%"). Confirma que soma 100%.
+5. **Temas por RA**: lista de temas/conteúdos de cada RA, na ordem que devem ser ensinados — vira a coluna "Descrição das atividades pedagógicas". Se a lista de temas for mais curta que o número de aulas calculado pro RA, a skill sinaliza a lacuna em vez de inventar conteúdo.
+6. **TDE**: quantos TDEs por RA, carga horária de cada um, e se cada TDE tem uma descrição própria (ex: "Solicitação" e "Apresentação" como TDEs separados) em vez do rótulo genérico "TDE". A data exata de cada TDE fica em aberto ("[professor define a data]", sem número de sessão) — quem decide o dia é o professor, não a skill.
+7. **Feriados nacionais no cronograma**: pergunta se o professor quer que apareçam como linha visível no cronograma (numerada, `RA: -`, carga horária do dia — não consome a meta de nenhum RA) ou fiquem omitidos (comportamento padrão atual). Vira `feriados_como_linha` em `dados.json`.
+8. **Recessos/pontos facultativos institucionais** (não são feriado nacional — feriados nacionais entram sozinhos via BrasilAPI, não precisa perguntar a lista): pede se há alguma data assim conhecida no período (ex: recesso acadêmico da Semana Santa). Seguem o mesmo tratamento do item 7 (omitido ou linha visível, conforme a resposta anterior).
+9. **Datas institucionais sem RA** (opcional): se o professor quiser marcar no cronograma datas fixas de atividades institucionais que não pertencem a nenhum RA (Acolhida Cultural, Semana Acadêmica, Feedback de notas finais) — entram na tabela com `RA: -`, inseridas manualmente na posição certa depois que `gerar_cronograma.py` monta a base (o calculador não sabe essas datas de antemão).
 
-A tabela final tem 5 colunas: **# | Data | RA | Descrição das atividades pedagógicas | Carga horária** — `#` fica em branco nas linhas sem data fixa (TDE, recuperação estendida), `RA` vira `-` nas linhas institucionais, `Carga horária` sai em formato `HH:MM`. Ver `template-pucpr.md` seção 5.
+A tabela final tem 5 colunas: **# | Data | RA | Descrição das atividades pedagógicas | Carga horária** — `#` fica em branco nas linhas sem data fixa (TDE, recuperação estendida), `RA` vira `-` nas linhas institucionais/feriado, `Carga horária` sai em formato `HH:MM`. A coluna `RA` também aceita múltiplos valores (`RA1, RA2`, pra aula de revisão cobrindo mais de um RA) ou o literal `Todos` — ajuste manual ao montar `documento.json` a partir da saída de `gerar_cronograma.py`, o calculador não gera isso sozinho. Ver `template-pucpr.md` seção 5.
 
 ## Bloco 5 — Regras da disciplina, bibliografia e orientações gerais
 - **Regras da Disciplina (seção 6, padrão do template — não pular)**: confirmar o número da Instrução Normativa de recuperação vigente e o contato da secretaria da escola/câmpus pra 2ª chamada (varia por escola — não assumir os valores de outra disciplina). O resto do texto (Diagnóstica/Formativa/Somativa/Recuperação/honestidade intelectual) é praticamente padrão — usar como boilerplate e só ajustar a fórmula da nota final.
-- Bibliografia básica e complementar (título, autor — justificativa é opcional).
+- Bibliografia básica e complementar (título, autor — justificativa é opcional). Pergunta o formato preferido: tabela `Nº | Referência` (**padrão sugerido**), lista numerada, ou bullets — os dois últimos viram uma sequência de blocos `"paragrafo"` no `documento.json` (número/bullet já embutido no texto), sem precisar de tipo de bloco novo em `gerar_docx.py`/`gerar_pdf.py`. Ver `template-pucpr.md` seção 7.
 - Orientações Gerais (seção 8): usar o texto oficial literal de `template-pucpr.md` (declaração padrão de uso de IA + link) — só perguntar se o professor quer uma variação própria, não reescrever por padrão.
 
 ## Brief final

@@ -11,23 +11,39 @@ Nome da disciplina (grande), nome do professor, "AAAA – Nº Semestre" (ex: "20
 Parágrafo descritivo do que a disciplina cobre.
 
 ## 2. Contexto da Disciplina
-Duas tabelas (Código | Disciplina): disciplinas precedentes recomendadas e disciplinas que a atual prepara/beneficia depois. Se não houver pré-requisito formal, vira um texto corrido ("Esta disciplina não possui pré-requisitos, porém é recomendado que o estudante tenha cursado...").
+Duas tabelas (Código | Disciplina): disciplinas precedentes recomendadas e disciplinas que a atual prepara/beneficia depois. Se não houver pré-requisito formal, vira um texto corrido ("Esta disciplina não possui pré-requisitos, porém é recomendado que o estudante tenha cursado..."). Variação vista em alguns planos: tabela de 3 colunas (Código | Período | Nome da disciplina) — ambas são válidas.
 
 ## 3. Competência(s), Temas de Estudo e Resultados de Aprendizagem
+A skill pergunta na entrevista (Bloco 3) qual dos 3 layouts reais usar — não é sempre o mesmo entre disciplinas/professores:
+
+**(a) 3 tabelas separadas** (padrão sugerido):
 - Tabela **Temas de Estudo**: Nº (TE1, TE2...) | Descrição do tema.
 - Tabela **Competências**: Nº C | Competência | Nº EC | Elementos de Competência | classificação (Internaliza/Mobiliza/Certifica, com legenda de cor amarelo/laranja/vermelho).
 - Tabela **Resultados de Aprendizagem**: EC | Nº (RA1, RA2...) | Resultado de aprendizagem (descrição) | Tema de estudo (quais TEs cobre). Inclui indicação de qual RA tem "RA de Recuperação" ao longo do semestre.
+
+**(b) Tabela única de 4 colunas**: Competência (com o Elemento de Competência mesclado no mesmo texto) | I/M (Internaliza/Mobiliza) | Temas de Estudo | RA.
+
+**(c) Tabela única de 5 colunas**: Competência | Elemento de Competência (coluna própria) | I/M | Temas de Estudo | RA.
+
 - **Mapa Mental** (diagrama visual, opcional — pular se não fizer sentido pra disciplina).
 
 ## 4. Alinhamento Construtivo: Metodologia e Avaliação
 Uma tabela por RA: Resultado(s) de aprendizagem | Indicadores de desempenho (IDx.y) | Metodologias/recursos/estratégias de ensino-aprendizagem | Processos de avaliação e recuperação de aprendizagem — este último detalha por tipo: `[Diagnóstica]`, `[Formativa]`, `[Somativa]`, `[Recuperação]` (ao longo do semestre e/ou estendida), cada um com o feedback e formato descritos.
 
+**% de cada RA na nota final** aparece de formas diferentes conforme o professor — a entrevista (Bloco 3) pergunta qual usar, sem assumir uma única:
+- % simples por RA, ou % por instrumento dentro do RA com fórmula ponderada final (`Nota = (35×RA1 + 65×RA2)/100`).
+- Pontos absolutos somando 10 (ex: RA1 = 3 pontos, RA2 = 7 pontos).
+- % embutido entre parênteses no próprio rótulo do RA dentro desta tabela (ex: `RA1. ... (30%)`), sem tabela/fórmula separada.
+- Tabela dedicada **"Avaliações Somativas"** logo antes do cronograma: `RA | Somativa | Nota das atividades no RA | Nota do RA na nota semestral (%)`.
+- Sem fórmula nenhuma — só prosa vaga ("Nota da Disciplina calculada a partir das atividades propostas").
+
 ## 5. Cronograma de Atividades Pedagógicas
 Tabela com 5 colunas: **# | Data | RA | Descrição das atividades pedagógicas | Carga horária**.
 - `#`: número sequencial da sessão — **em branco** para linhas administrativas sem data de aula fixa (ex: "Semana de Recuperação Estendida").
-- `Data`: formato brasileiro `DD/MM`, sem ano.
-- `RA`: `-` para atividades institucionais não ligadas a um RA específico (Acolhida Cultural, Semana Acadêmica, Feedback de notas).
+- `Data`: formato brasileiro `DD/MM` (padrão sugerido, sem ano) ou `DD/MM/AAAA` (com ano) — confirmado na entrevista, vira `formato_data` em `dados.json`. Intervalo de datas (`DD/MM–DD/MM`, visto em 1 caso) não é gerado automaticamente — ajuste manual se o professor pedir.
+- `RA`: `-` para atividades institucionais não ligadas a um RA específico (Acolhida Cultural, Semana Acadêmica, Feedback de notas) e para linhas de feriado. Também aceita múltiplos valores (`RA1, RA2`, aula que revisa mais de um RA) ou o literal `Todos` — ajuste manual, o calculador não gera isso sozinho.
 - `Carga horária`: formato `HH:MM` (ex: `04:00`).
+- **Feriados nacionais**: por padrão somem do cronograma (excluídos via BrasilAPI). Se o professor pedir (`feriados_como_linha: true` em `dados.json`), aparecem como linha normal numerada, `RA: -`, descrição `Feriado`, com a carga horária do dia — sem consumir a meta de nenhum RA. Comportamento visto nos planos reais mais recentes.
 - Linhas de avaliação somativa e datas institucionais (Acolhida Cultural, Semana Acadêmica) costumam vir destacadas com uma cor de fundo diferente — a skill não replica isso (cosmético, sem prejuízo de conteúdo).
 - Nota de rodapé da tabela: `*O cronograma está sujeito a alterações conforme necessidade.`
 - Ver `../scripts/gerar_cronograma.py` — essa seção é calculada, não preenchida à mão.
@@ -40,7 +56,7 @@ Tabela com 5 colunas: **# | Data | RA | Descrição das atividades pedagógicas 
 - Regras de entrega: meio de entrega (AVA), autoria em atividades em grupo, honestidade intelectual.
 
 ## 7. Bibliografia
-**7.1 Básica** e **7.2 Complementar** — cada uma uma tabela `Nº | Referência` (referência completa: autor, título, edição, cidade, editora, ano, ISBN quando houver).
+**7.1 Básica** e **7.2 Complementar** — referência completa (autor, título, edição, cidade, editora, ano, ISBN quando houver), em um de 3 formatos, confirmado na entrevista: tabela `Nº | Referência` (padrão sugerido), lista numerada, ou bullets — os últimos dois vistos com mais frequência nos planos reais mapeados.
 
 ## 8. Orientações Gerais
 **8.1 Orientações para uso de Inteligência Artificial Generativa (IAGen)** — texto oficial, usar literal (só ajustar o número da resolução se a instituição atualizar):

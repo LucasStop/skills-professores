@@ -11,10 +11,11 @@ Uso:
 
 Cada linha de saída traz: indice (nº sequencial da sessão, None pra TDE sem
 data fixa — mesmo padrão de linha administrativa sem número dos planos
-reais), data (DD/MM), data_iso (uso interno), ra, descricao, carga_horaria
-(número, uso interno) e carga_horaria_fmt ("HH:MM", formato dos planos
-reais). O documento final usa indice/data/ra/descricao/carga_horaria_fmt —
-"#" é a primeira coluna da tabela de cronograma no template oficial.
+reais), data (DD/MM ou DD/MM/AAAA conforme "formato_data"), data_iso (uso
+interno), ra, descricao, carga_horaria (número, uso interno) e
+carga_horaria_fmt ("HH:MM", formato dos planos reais). O documento final usa
+indice/data/ra/descricao/carga_horaria_fmt — "#" é a primeira coluna da
+tabela de cronograma no template oficial.
 
 Formato de dados.json:
 {
@@ -22,6 +23,11 @@ Formato de dados.json:
   "data_fim": "2026-12-05",
   "dias_semana": {"terca": 4},                # ou {"terca": 2, "quinta": 2}
   "recessos_manuais": ["2026-11-02"],          # pontos facultativos institucionais
+  "formato_data": "dd_mm",                     # ou "dd_mm_aaaa" — opcional, default "dd_mm"
+  "feriados_como_linha": false,                 # opcional — true: feriado nacional ("Feriado") e
+                                                 # recesso manual ("Recesso Acadêmico") viram linha
+                                                 # visível no cronograma (RA "-", carga horária do
+                                                 # dia, não consome a meta de nenhum RA)
   "ras": [
     {"nome": "RA1", "percentual": 30, "temas": ["Tema A", "Tema B"],
      "tde": [{"horas": 4, "quantidade": 1}]},
@@ -78,28 +84,40 @@ def busca_feriados_nacionais(anos):
     return feriados
 
 
-def gera_encontros(data_inicio, data_fim, dias_semana, feriados):
-    """dias_semana: dict {dia_normalizado: horas}. feriados: set de 'YYYY-MM-DD'."""
+def gera_encontros(data_inicio, data_fim, dias_semana, feriados_nacionais, recessos_manuais, feriados_como_linha=False):
+    """dias_semana: dict {dia_normalizado: horas}. feriados_nacionais/recessos_manuais:
+    sets de 'YYYY-MM-DD'. Com feriados_como_linha=True, datas de feriado/recesso que
+    caem em dia de aula continuam no resultado, marcadas com "feriado"/"recesso": True
+    — quem chama decide como renderizar (linha visível "Feriado"/"Recesso Acadêmico",
+    sem consumir meta de RA)."""
     encontros = []
     d = data_inicio
     while d <= data_fim:
         dia_idx = d.weekday()  # segunda=0 ... domingo=6
         dia_nome = DIAS_SEMANA_PT[dia_idx]
-        if dia_nome in dias_semana and d.isoformat() not in feriados:
-            encontros.append({"data": d, "horas": dias_semana[dia_nome]})
+        if dia_nome in dias_semana:
+            iso = d.isoformat()
+            if iso not in feriados_nacionais and iso not in recessos_manuais:
+                encontros.append({"data": d, "horas": dias_semana[dia_nome]})
+            elif feriados_como_linha:
+                tag = "feriado" if iso in feriados_nacionais else "recesso"
+                encontros.append({"data": d, "horas": dias_semana[dia_nome], tag: True})
         d += timedelta(days=1)
     return encontros
 
 
-def gera_cronograma(data_inicio, data_fim, dias_semana, feriados_nacionais, recessos_manuais, ras):
+def gera_cronograma(data_inicio, data_fim, dias_semana, feriados_nacionais, recessos_manuais, ras,
+                     formato_data="dd_mm", feriados_como_linha=False):
     """Retorna (linhas, avisos). linhas = [{data, ra, descricao, carga_horaria}]."""
     avisos = []
-    feriados = set(feriados_nacionais) | set(recessos_manuais)
-    encontros = gera_encontros(data_inicio, data_fim, dias_semana, feriados)
+    fmt_strftime = "%d/%m/%Y" if formato_data == "dd_mm_aaaa" else "%d/%m"
+    feriados_nacionais = set(feriados_nacionais)
+    recessos_manuais = set(recessos_manuais)
+    encontros = gera_encontros(data_inicio, data_fim, dias_semana, feriados_nacionais, recessos_manuais, feriados_como_linha)
     if not encontros:
         raise ValueError("nenhum encontro gerado — confira o range de datas e os dias da semana")
 
-    carga_total = sum(e["horas"] for e in encontros)
+    carga_total = sum(e["horas"] for e in encontros if not e.get("feriado") and not e.get("recesso"))
     soma_pct = sum(ra["percentual"] for ra in ras)
     if abs(soma_pct - 100) > 0.01:
         avisos.append(f"percentuais dos RAs somam {soma_pct}%, não 100%")
@@ -117,6 +135,18 @@ def gera_cronograma(data_inicio, data_fim, dias_semana, feriados_nacionais, rece
     indice = 1
     ra_idx = 0
     for encontro in encontros:
+        if encontro.get("feriado") or encontro.get("recesso"):
+            linhas.append({
+                "indice": indice,
+                "data": encontro["data"].strftime(fmt_strftime),
+                "data_iso": encontro["data"].isoformat(),
+                "ra": "-",
+                "descricao": "Feriado" if encontro.get("feriado") else "Recesso Acadêmico",
+                "carga_horaria": encontro["horas"],
+                "carga_horaria_fmt": formata_carga_horaria(encontro["horas"]),
+            })
+            indice += 1
+            continue
         while (
             ra_idx < len(ras) - 1
             and ras[ra_idx]["_horas_aula_acumuladas"] >= ras[ra_idx]["_meta_aula"]
@@ -130,7 +160,7 @@ def gera_cronograma(data_inicio, data_fim, dias_semana, feriados_nacionais, rece
             avisos.append(f"{ra['nome']}: acabaram os temas antes das aulas (encontro de {encontro['data'].isoformat()} sem tema)")
         linhas.append({
             "indice": indice,  # numeração sequencial da linha, como nos planos reais (coluna "#")
-            "data": encontro["data"].strftime("%d/%m"),  # formato brasileiro, sem ano (bate com os planos reais mapeados)
+            "data": encontro["data"].strftime(fmt_strftime),  # DD/MM (padrão) ou DD/MM/AAAA
             "data_iso": encontro["data"].isoformat(),
             "ra": ra["nome"],
             "descricao": descricao,
@@ -167,6 +197,8 @@ def carrega_dados(caminho):
     dados["data_fim"] = parse_data(dados["data_fim"])
     dados["dias_semana"] = {normaliza_dia(k): v for k, v in dados["dias_semana"].items()}
     dados.setdefault("recessos_manuais", [])
+    dados.setdefault("formato_data", "dd_mm")
+    dados.setdefault("feriados_como_linha", False)
     for ra in dados["ras"]:
         ra.setdefault("tde", [])
         ra.setdefault("temas", [])
@@ -189,6 +221,7 @@ def main():
     linhas, avisos = gera_cronograma(
         dados["data_inicio"], dados["data_fim"], dados["dias_semana"],
         feriados, dados["recessos_manuais"], dados["ras"],
+        formato_data=dados["formato_data"], feriados_como_linha=dados["feriados_como_linha"],
     )
     if aviso_feriados:
         avisos.insert(0, aviso_feriados)
@@ -237,7 +270,28 @@ def demo():
     indices = [l["indice"] for l in linhas if l["indice"] is not None]
     assert indices == list(range(1, len(indices) + 1)), f"índices não são sequenciais 1..N: {indices}"
 
-    print(f"demo ok — {len(linhas)} linhas geradas, {len(avisos)} avisos: {avisos}")
+    # feriados_como_linha=True: feriado nacional numa terça vira linha "Feriado"
+    # visível, sem tirar horas da meta de nenhum RA.
+    linhas_fer, avisos_fer = gera_cronograma(
+        data_inicio=date(2026, 8, 4),
+        data_fim=date(2026, 8, 18),
+        dias_semana={"terca": 4},
+        feriados_nacionais={"2026-08-11"},
+        recessos_manuais=[],
+        ras=[{"nome": "RA1", "percentual": 100, "temas": ["A", "B"], "tde": []}],
+        feriados_como_linha=True,
+        formato_data="dd_mm_aaaa",
+    )
+    feriado_linhas = [l for l in linhas_fer if l["descricao"] == "Feriado"]
+    assert len(feriado_linhas) == 1, f"esperava 1 linha de feriado, veio {len(feriado_linhas)}"
+    assert feriado_linhas[0]["ra"] == "-" and feriado_linhas[0]["indice"] is not None
+    assert feriado_linhas[0]["data"] == "11/08/2026", f"formato_data com ano não aplicado: {feriado_linhas[0]['data']!r}"
+    horas_ra1_fer = sum(l["carga_horaria"] for l in linhas_fer if l["ra"] == "RA1")
+    assert horas_ra1_fer == 8, f"feriado não deveria contar na meta do RA: {horas_ra1_fer}h"
+    datas_normais = [l for l in linhas_fer if l["ra"] == "RA1"]
+    assert all("/" in l["data"] and len(l["data"]) == 10 for l in datas_normais), "formato_data dd_mm_aaaa não aplicado às linhas normais"
+
+    print(f"demo ok — {len(linhas)} linhas geradas, {len(avisos)} avisos: {avisos} | feriado-linha: {len(linhas_fer)} linhas, {len(avisos_fer)} avisos")
 
 
 if __name__ == "__main__":
